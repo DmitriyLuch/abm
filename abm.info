@@ -1,0 +1,5 @@
+name = AddressBookModule ABM
+description = Address book module
+core = 7.x
+
+files[]=abm.css

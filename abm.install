@@ -1,0 +1,104 @@
+<?php
+/**
+ * @file
+ * Install, update, and uninstall functions for the abm.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+
+function abm_schema() {
+  $schema['abm_contacts'] = array(
+    'description' => 'Address book module table',
+    'fields' => array(
+      'cid' => array(
+        'description' => 'The primary identifier for a contact.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'first_name' => array(
+        'description' => 'Contact name.',
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'last_name' => array(
+        'description' => 'Contact surname.',
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'email' => array(
+        'description' => 'Contact email.',
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'phone' => array(
+        'description' => 'Contact phone serilized.',
+        'type' => 'varchar',
+        'length' => 4096,
+        'not null' => TRUE,
+        'default' => '',
+        'serializable' => TRUE,
+      ),
+      'ph_id' => array(
+        'description' => 'Contact photo identifier.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'cat_id' => array(
+        'description' => 'Contact category identifier.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'user_id' => array(
+        'description' => 'User identifier.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'birthday' => array(
+        'description' => 'User birthday.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'notes' => array(
+        'description' => 'User notes.',
+        'type' => 'text',
+        'not null' => TRUE,
+      ),
+    ),
+
+    'primary key' => array('cid'),
+  );
+  return $schema;
+}
+
+//function address_book_image_default_styles() {
+//  $styles = array();
+//
+//  $styles['contact_preview'] = array(
+//    'effects' => array(
+//      array(
+//        'name' => 'image_scale',
+//        'data' => array(
+//          'width' => 50,
+//          'height' => 50,
+//          'upscale' => 1,
+//        ),
+//        'weight' => 0,
+//      ),
+//    ),
+//  );
+//
+//  return $styles;
+//}

@@ -1,0 +1,397 @@
+<?php
+
+/**
+ * @file
+ */
+
+/**
+ * Implements hook_menu().
+ */
+
+function abm_menu(){
+  $items['abm']=array(
+    'title' => 'Address book',
+    'description' => t('Address book main page'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('abm_list_delete_form'),
+    'access callback' => TRUE,
+  );
+
+  $items['abm/default'] = array(
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'title' => 'Address Book',
+    'weight' => -1,
+  );
+
+  $items['abm/add']=array(
+    'type' => MENU_LOCAL_TASK,
+    'title' => 'Add contact',
+    'description' => t('Add contact to book'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('abm_add_edit_form'),
+    'access callback' => TRUE,
+  );
+
+  $items['abm/edit/%abm_contact']=array(
+    'title' => 'Edit contact',
+    'description' => 'Edit book contact',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('abm_add_edit_form',2),
+    'access callback' => TRUE,
+  );
+
+  $items['abm/delete/%']=array(
+    'title' => 'Delete contact',
+    'description' => 'Delete book contact',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('abm_list_delete_form',2),
+    'access callback' => TRUE,
+  );
+
+  $items['abm/view/%abm_contact_show']=array(
+    'title' => 'View contact',
+    'description' => 'View book contact',
+    'page callback' => 'theme_abm_show_contact',
+    'page arguments' => array(2),
+    'access callback' => TRUE,
+  );
+
+  return $items;
+
+}
+
+function abm_contact_load($arg){
+  $query = db_select('abm_contacts','a');
+  $query->fields('a');
+  $query->condition('cid', $arg, '=');
+  $query_result=$query->execute();
+  $contact=$query_result->fetchAssoc();
+  return $contact;
+}
+
+function abm_add_edit_form($form, &$form_state, $contact=NULL) {
+  $form=array();
+
+  $form['contact_id'] = array(
+    '#type' => 'hidden',
+    '#default_value' => $contact['cid'],
+  );
+
+  $form['first_name'] = array(
+    '#type' => 'textfield',
+    '#title' => t('First Name'),
+    '#default_value' => $contact['first_name'],
+  );
+
+  $form['last_name'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Last Name'),
+    '#default_value' => $contact['last_name'],
+  );
+
+  $form['email'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Email'),
+    '#default_value' => $contact['email'],
+  );
+
+  $form['phone'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Phone'),
+    '#default_value' => $contact['phone'],
+  );
+
+  $birthday=array();
+  if(isset($contact['birthday'])){
+    $birthday=abm_time_to_date($contact['birthday']);
+  }
+  $form['birthday'] = array(
+    '#type' => 'date',
+    '#title' => t('Birthday'),
+    '#default_value' => $birthday,
+  );
+
+  $form['notes'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Notes'),
+    '#default_value' => $contact['notes'],
+  );
+
+  $tree=taxonomy_get_tree(2);
+  $list = array();
+  foreach($tree as $term){
+    $list[$term->tid]=$term->name;
+  }
+
+  $form['category'] = array(
+    '#type' => 'select',
+    '#title' => t('Category'),
+    '#options' => $list,
+    '#default_value' => $contact['cat_id'],
+  );
+
+  $form['file'] = array(
+    '#type' => 'managed_file',
+    '#title' => t('Photo'),
+    '#description' => t('Upload a file, allowed extensions: jpg, jpeg, png, gif'),
+    '#default_value' => $contact['ph_id'],
+    '#upload_location' => 'public://',
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit'),
+  );
+
+  return $form;
+}
+
+function abm_add_edit_form_submit($form, &$form_state){
+  $fid=$form_state['values']['file'];
+  $file = file_load($fid);
+  $file->status = FILE_STATUS_PERMANENT;
+  file_save($file);
+
+  $id=$form_state['values']['contact_id'];
+  $birthday=abm_date_to_time($form_state['values']['birthday']);
+
+  $record = array (
+    'first_name' => $form_state['values']['first_name'],
+    'last_name' => $form_state['values']['last_name'],
+    'email' => $form_state['values']['email'],
+    'phone' => $form_state['values']['phone'],
+    'cat_id' => $form_state['values']['category'],
+    'ph_id' => $fid,
+    'birthday' => $birthday,
+    'notes'=>$form_state['values']['notes'],
+  );
+
+  if($id==NULL){
+    global $user;
+    $uid=$user->uid;
+    $record['user_id'] = $uid;
+    drupal_write_record('abm_contacts',$record);
+  }
+  else{
+    $record['cid']=$id;
+    drupal_write_record('abm_contacts',$record,'cid');
+  }
+  file_usage_add($file, 'abm', 'contact', $record['cid']);
+
+
+  $form_state['redirect'] = 'abm';
+}
+
+function abm_list_delete_form($form, &$form_state, $contact=NULL) {
+  $form = array();
+
+  if($contact){
+    $form_state['delete_list'][]=$contact;
+  }
+
+  if (!empty($form_state['delete_list'])) {
+    // build list of contacts to be removed.
+    // add button for confirmation
+    $list=array();
+    foreach($form_state['delete_list'] as $key){
+      $rec=abm_contact_load($key);
+      $list[]=t('@name @surname', array('@name' => $rec['first_name'], '@surname' => $rec['last_name']));
+    }
+    $form['delete_list'] = array(
+      '#theme' => 'item_list',
+      '#title' => t('Confirm delete'),
+      '#items' => $list,
+    );
+    $form['confirm'] = array(
+      '#type' => 'submit',
+      '#value' => t('Confirm'),
+    );
+    return $form;
+  }
+
+  $tree=taxonomy_get_tree(2);
+  $list = array();
+  foreach($tree as $term){
+    $list[$term->tid]=$term->name;
+  }
+  $filter=NULL;
+  if(isset($form_state['values']['category_filter'])){
+    $filter=$form_state['values']['category_filter'];
+  }
+  $form['category_filter'] = array(
+    '#type' => 'select',
+    '#title' => t('Category'),
+    '#options' => $list,
+    '#default_value' => $filter,
+  );
+  $form['filter'] = array(
+    '#type' => 'submit',
+    '#value' => t('Filter'),
+  );
+  $form['reset'] = array(
+    '#type' => 'submit',
+    '#value' => t('Reset'),
+  );
+
+
+  global $user;
+  $query = db_select('abm_contacts','a');
+  $query->fields('a');
+  $query->condition('user_id', $user->uid, '=');
+
+  if (!empty($filter)) {
+    $query->condition('cat_id',$filter,'=');
+  }
+
+  $query_result=$query->execute();
+  $rows = array();
+
+  while($res = $query_result->fetchAssoc()){
+
+    $file=file_load($res['ph_id']);
+    $image=array(
+      '#theme' => 'image_style',
+      '#style_name' => 'thumbnail',
+      '#path' => $file->uri,
+    );
+    $link=array(
+      '#type' => 'link',
+      '#title' => t($res['last_name'] . ' ' . $res['first_name']),
+      '#href' => 'abm/view/' . $res['cid'],
+    );
+
+    $manage_links['edit']=array(
+      '#type' => 'link',
+      '#title' => t('Edit'),
+      '#href' => 'abm/edit/' . $res['cid'],
+    );
+
+    $manage_links['separator']=array(
+      '#type' => 'markup',
+      '#markup' => ' | ',
+    );
+
+    $manage_links['delete']=array(
+      '#type' => 'link',
+      '#title' => t('Delete'),
+      '#href' => 'abm/delete/' . $res['cid'],
+    );
+
+    $birthday = abm_time_to_text($res['birthday']);
+
+    $term=taxonomy_term_load($res['cat_id']);
+    $category=$term->name;
+
+    $rows[$res['cid']] = array(
+      'photo' => array('data'=>$image),
+      'full_name' => array('data'=>$link),
+      'email' => $res['email'],
+      'phone' => $res['phone'],
+      'category' => $category,
+      'birthday' => $birthday,
+      'notes' => $res['notes'],
+      'manage_links' => array('data'=>$manage_links),
+    );
+  }
+
+  $table_book = array(
+    '#type' => 'tableselect',
+    '#header' =>  array(
+      'photo'=>t('Photo'),
+      'full_name'=>array('field'=>'first_name', 'data'=>t('Full Name')),
+      'email'=>array('field'=>'email', 'data'=>t('Email')),
+      'phone'=>array('field'=>'phone', 'data'=>t('Phone')),
+      'category'=>array('field'=>'name', 'data'=>t('Category')),
+      'birthday'=>t('Birthday'),
+      'notes'=>t('Notes'),
+      'manage_links'=>'',
+    ),
+    '#options' => $rows,
+    '#empty' => t('The table is empty'),
+    '#js_select' => TRUE,
+    '#attributes' => array(),
+  );
+
+
+
+  $form['table'] = $table_book;
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Delete'),
+ );
+
+  return $form;
+}
+
+function abm_list_delete_form_submit($form, &$form_state) {
+  if ($form_state['clicked_button']['#value'] == t('Delete')) {
+    $form_state['delete_list'] = array_filter($form_state['values']['table']);
+    $form_state['rebuild'] = TRUE;
+  }
+  else if($form_state['clicked_button']['#value'] == t('Filter')) {
+    $form_state['rebuild'] = TRUE;
+  }
+  else if($form_state['clicked_button']['#value'] == t('Confirm')) {
+    $keys=array_values($form_state['delete_list']);
+//    $query = db_delete('abm_contacts');
+//    $query->condition('cid',$keys,'IN');
+//    $query->execute();
+
+    foreach($form_state['delete_list'] as $id){
+      abm_delete_entry($id);
+    }
+
+    $form_state['redirect'] = 'abm';
+  }
+}
+
+function abm_contact_show_load($arg){
+  $query = db_select('abm_contacts','a');
+  $query->fields('a');
+  $query->condition('cid', $arg, '=');
+  $query_result=$query->execute();
+  $contact=$query_result->fetchAssoc();
+
+  $photo = file_load($contact['ph_id']);
+  $category = taxonomy_term_load($contact['cat_id']);
+  $birthday = abm_time_to_text($contact['birthday']);
+  $contact['photo'] = file_create_url($photo->uri);
+  $contact['category'] = $category->name;
+  $contact['birthday'] = $birthday;
+  return $contact;
+}
+
+function abm_theme(){
+  return array(
+    'abm_show_contact' => array(
+      'arguments' => array('abm_contact' => NULL),
+      'template' => 'abm_show_contact',
+    ),
+  );
+}
+
+function abm_time_to_text($time){
+  return format_date($time, 'custom', 'M-d-Y');
+}
+
+function abm_date_to_time($date){
+  return mktime(0, 0, 0, $date['month'], $date['day'], $date['year']);
+}
+
+function abm_time_to_date($time){
+  $date=array();
+  $date['month'] = format_date($time, 'custom', 'n');
+  $date['day'] = format_date($time, 'custom', 'j');
+  $date['year'] = format_date($time, 'custom', 'Y');
+  return $date;
+}
+
+function abm_delete_entry($id){
+  $contact=abm_contact_load($id);
+  $file=file_load($contact['ph_id']);
+  file_delete($file);
+  $query = db_delete('abm_contacts');
+  $query->condition('cid',$id,'=');
+  $query->execute();
+}
